@@ -11,4 +11,6 @@ public class MongoBaseSettings : IDataExtensionSettings
 
     [Required]
     public string? DatabaseName { get; set; }
+
+    public int BatchSize { get; set; } = 1000; // Default batch size
 }

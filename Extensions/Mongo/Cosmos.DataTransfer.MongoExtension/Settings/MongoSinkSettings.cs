@@ -5,6 +5,4 @@ public class MongoSinkSettings : MongoBaseSettings
 {
     [Required]
     public string? Collection { get; set; }
-
-    public int? BatchSize { get; set; }
 }

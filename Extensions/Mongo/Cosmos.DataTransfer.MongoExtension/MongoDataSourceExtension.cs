@@ -17,7 +17,7 @@ internal class MongoDataSourceExtension : IDataSourceExtensionWithSettings
         var settings = config.Get<MongoSourceSettings>();
         settings.Validate();
 
-        if (!string.IsNullOrEmpty(settings.ConnectionString) && !string.IsNullOrEmpty(settings.DatabaseName))
+        if (settings != null && !string.IsNullOrEmpty(settings.ConnectionString) && !string.IsNullOrEmpty(settings.DatabaseName))
         {
             var context = new Context(settings.ConnectionString, settings.DatabaseName, settings.KeyVaultNamespace, settings.KMSProviders);
 
@@ -27,7 +27,7 @@ internal class MongoDataSourceExtension : IDataSourceExtensionWithSettings
 
             foreach (var collection in collectionNames)
             {
-                await foreach (var item in EnumerateCollectionAsync(context, collection, logger).WithCancellation(cancellationToken))
+                await foreach (var item in EnumerateCollectionAsync(context, collection, logger, settings.BatchSize).WithCancellation(cancellationToken))
                 {
                     yield return item;
                 }
@@ -35,16 +35,24 @@ internal class MongoDataSourceExtension : IDataSourceExtensionWithSettings
         }
     }
 
-    public async IAsyncEnumerable<IDataItem> EnumerateCollectionAsync(Context context, string collectionName, ILogger logger)
+    public async IAsyncEnumerable<IDataItem> EnumerateCollectionAsync(Context context, string collectionName, ILogger logger, int batchSize)
     {
         logger.LogInformation("Reading collection '{Collection}'", collectionName);
-        var collection = context.GetRepository<BsonDocument>(collectionName);
+        var collection = context.GetCollection<BsonDocument>(collectionName);
         int itemCount = 0;
-        foreach (var record in await Task.Run(() => collection.AsQueryable()))
+
+        using (var cursor = await collection.FindAsync<BsonDocument>(new BsonDocument().BatchSize(batchSize)))
         {
-            yield return new MongoDataItem(record);
-            itemCount++;
+            while (await cursor.MoveNextAsync())
+            {
+                foreach (var record in cursor.Current)
+                {
+                    yield return new MongoDataItem(record);
+                    itemCount++;
+                }
+            }
         }
+
         if (itemCount > 0)
             logger.LogInformation("Read {ItemCount} items from collection '{Collection}'", itemCount, collectionName);
         else
